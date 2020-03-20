@@ -61,6 +61,7 @@ class ProjectDialog(object):
 			try:
 				text = Description().fetch(project).get('data')
 				text = self.downloadThumbnailsAndReplaceLinks(text)
+				print(text)
 				message = '\n' + '<h1>' + name + '</h1>' 
 				message = message + '\n' + text
 				projectData.append({'id': pId, 'name': name, 'message': message})

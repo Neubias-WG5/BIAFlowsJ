@@ -1,4 +1,8 @@
-from be.cytomine.client import Cytomine
+from java.io import File
+from org.apache.http.entity.mime import MultipartEntity
+from org.apache.http.entity.mime.content import FileBody
+from org.json.simple import JSONValue
+from be.cytomine.client import Cytomine, HttpClient
 
 class BIAFlows(object):
 	'''
@@ -19,6 +23,7 @@ class BIAFlows(object):
 		self.publicKey = publicKey if publicKey else self.__DEFAULT_PUBLIC_KEY
 		self.privateKey = privateKey if privateKey else self.__DEFAULT_PRIVATE_KEY
 		self.connection = Cytomine.connection(self.server, self.publicKey, self.privateKey)
+		BIAFlows.__INSTANCE = self
 
 	def downloadPicture(self, relativeURL, picID, outPath):
 		'''
@@ -64,7 +69,20 @@ class BIAFlows(object):
 		'''
 		self.privateKey = privateKey
 		self.connection = Cytomine.connection(self.server, self.publicKey, self.privateKey)
-		
+
+	def getUploadURL(self):
+		protocol = ''
+		url = self.getHost()
+		result = url
+		if url.find('://') >= 0:
+			protocol = url.split("://")[0]
+			result = url.split("://")[1]
+		firstPartOfHost = result.split('.')[0]
+		firstPartOfHost = firstPartOfHost.replace('/', '')
+		replacement = firstPartOfHost + "-upload"
+		result = url.replace(firstPartOfHost, replacement) + "/"
+		return result
+	
 	@classmethod
 	def getInstance(cls):
 		'''
@@ -74,5 +92,31 @@ class BIAFlows(object):
 		data is created and returned.
 		'''
 		if not cls.__INSTANCE:
-			cls.__INSTANCE = BIAFlows()
+			BIAFlows()
+		return cls.__INSTANCE
+
+class Uploader(object):
+	__INSTANCE = None
+	
+	def uploadImage(self, aFile, projectID, storageID):
+		biaflows = BIAFlows.getInstance()
+		host = biaflows.getUploadURL()
+		print(host)
+		client = HttpClient(biaflows.getPublicKey(), biaflows.getPrivateKey(), host)
+		url = "/upload?idStorage=" + storageID + "&cytomine=" + biaflows.getHost() + "&idProject=" + projectID
+		print(url)
+		entity = MultipartEntity()
+		entity.addPart("files[]", FileBody(File(aFile)))
+		client.authorize("POST", url, entity.getContentType().getValue(), "application/json,*/*")
+		client.connect(host + url)
+		code = client.post(entity)
+		response = client.getResponseData()
+		client.disconnect()
+		obj = JSONValue.parse(response)
+		return code, obj
+		
+	@classmethod
+	def getInstance(cls):
+		if not cls.__INSTANCE:
+			cls.__INSTANCE = Uploader()
 		return cls.__INSTANCE

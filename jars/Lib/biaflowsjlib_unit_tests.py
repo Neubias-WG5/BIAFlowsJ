@@ -1,4 +1,4 @@
-from biaflowsjlib import BIAFlows, ProjectDialog
+from biaflowsj.lib import BIAFlows
 import unittest, sys, os
 
 class BIAFlowsTest(unittest.TestCase):
@@ -50,9 +50,6 @@ def suite():
 	suite.addTest(BIAFlowsTest('testGetHost'))
 	suite.addTest(BIAFlowsTest('testGetInstance'))
 
-	suite.addTest(ProjectDialogTest('testConstructor'))
-	suite.addTest(ProjectDialogTest('testGetTitle'))
-	
 	return suite
 	
 runner = unittest.TextTestRunner(sys.stdout, verbosity=1)

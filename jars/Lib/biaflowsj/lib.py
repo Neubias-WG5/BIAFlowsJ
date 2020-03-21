@@ -1,8 +1,10 @@
+import os
 from java.io import File
 from org.apache.http.entity.mime import MultipartEntity
 from org.apache.http.entity.mime.content import FileBody
 from org.json.simple import JSONValue
 from be.cytomine.client import Cytomine, HttpClient
+from be.cytomine.client.collections import ProjectCollection, StorageCollection
 
 class BIAFlows(object):
 	'''
@@ -71,6 +73,9 @@ class BIAFlows(object):
 		self.connection = Cytomine.connection(self.server, self.publicKey, self.privateKey)
 
 	def getUploadURL(self):
+		'''
+		Construct the url of the upload-server from the biaflows host url.
+		'''
 		protocol = ''
 		url = self.getHost()
 		result = url
@@ -96,15 +101,56 @@ class BIAFlows(object):
 		return cls.__INSTANCE
 
 class Uploader(object):
+	'''
+	Upload data to the biaflows server.
+	'''
 	__INSTANCE = None
-	
+
+	IMAGE_FILE_EXTENSIONS = ['tif', 'tiff', 'jpg', 'jpeg']
+
+	def convertImagesInFolderToOME(self, folder, outFolder):
+		'''
+		Convert all images in folder to ome-tif and save the results
+		into outFolder.
+		'''
+		pass
+		
+	def convertImageToOME(self, image, outFolder):
+		'''
+		Convert an image to ome-tif and save it into the outFolder. 
+		'''
+		if not os.path.isdir(outFolder):
+			os.mkdir(outFolder)
+		path, filename = os.path.split(image)	
+		outfilename = filename
+		if not outfilename.tolower().endswith('.ome.tif'):
+			root, ext = os.path.splitext(outfilename)
+			outfilename = outfilename + ".ome.tif"
+		IJ.openImage(image)
+		imp = IJ.getImage()
+		out = outFolder + outfilename
+		IJ.run(imp, "OME-TIFF...", "save="+out+" compression=Uncompressed");
+		imp.close()
+		
+	def uploadImagesInFolder(self, folder, projectID, storageID):
+		'''
+		Upload all images in the folder.
+
+		The images will be associated to a project and a storage.
+		'''
+		pass
+		
 	def uploadImage(self, aFile, projectID, storageID):
+		'''
+		Upload an image to the server. 
+
+		The image will be associated to a project and a storage.
+		'''
 		biaflows = BIAFlows.getInstance()
 		host = biaflows.getUploadURL()
 		print(host)
 		client = HttpClient(biaflows.getPublicKey(), biaflows.getPrivateKey(), host)
 		url = "/upload?idStorage=" + storageID + "&cytomine=" + biaflows.getHost() + "&idProject=" + projectID
-		print(url)
 		entity = MultipartEntity()
 		entity.addPart("files[]", FileBody(File(aFile)))
 		client.authorize("POST", url, entity.getContentType().getValue(), "application/json,*/*")
@@ -114,9 +160,84 @@ class Uploader(object):
 		client.disconnect()
 		obj = JSONValue.parse(response)
 		return code, obj
+
+	@classmethod
+	def getImageList(cls, folder):
+		'''
+		Get a list of the image files in the folder.
+		'''
+		files = os.listdir(folder)
+		images = [f for f in files if os.path.isfile(folder + f) and f.split('.')[-1] in Uploader.IMAGE_FILE_EXTENSIONS]
+		return images
 		
 	@classmethod
 	def getInstance(cls):
+		'''
+		Get the current instance of the uploader. 
+
+		Creates and returns a new instance if none exists.
+		'''
 		if not cls.__INSTANCE:
 			cls.__INSTANCE = Uploader()
 		return cls.__INSTANCE
+
+class Projects(object):
+	def __init__(self):
+		'''
+		Create a new Projects instance.
+		'''
+		super(Projects, self).__init__()
+		self.projectNames = []
+		self.projectIDs = []
+		self.updateFromServer()
+
+	def updateFromServer(self):
+		names = []
+		ids = []
+		projectCollection = ProjectCollection().fetch()
+		for i in range(0, projectCollection.size()):
+			project = projectCollection.get(i)
+			names.append(project.get('name'))
+			ids.append(project.get('id'))
+		projectTupels = zip(ids, names)
+		projectTupels.sort(key=lambda tup: tup[1]) 
+		unzipped = [list(t) for t in zip(*projectTupels)]
+		self.projectIDs = unzipped[0]
+		self.projectNames = unzipped[1]
+
+	def getNames(self):
+		return self.projectNames
+
+	def getIDs(self):
+		return self.projectIDs
+
+class Storages(object):
+	def __init__(self):
+		'''
+		Create a new Storages instance.
+		'''
+		super(Storages, self).__init__()
+		self.storageNames = []
+		self.storageIDs = []
+		self.updateFromServer()
+
+	def updateFromServer(self):
+		names = []
+		ids = []
+		collection = StorageCollection().fetch()
+		for i in range(0, collection.size()):
+			storage = collection.get(i)
+			names.append(storage.get('name'))
+			ids.append(storage.get('id'))
+		storageTupels = zip(ids, names)
+		storageTupels.sort(key=lambda tup: tup[1]) 
+		unzipped = [list(t) for t in zip(*storageTupels)]
+		self.storageIDs = unzipped[0]
+		self.storageNames = unzipped[1]
+
+	def getNames(self):
+		return self.storageNames
+
+	def getIDs(self):
+		return self.storageIDs
+	

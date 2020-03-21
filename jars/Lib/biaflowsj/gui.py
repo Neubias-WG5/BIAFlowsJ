@@ -7,10 +7,10 @@ from be.cytomine.client import CytomineException
 from be.cytomine.client.collections import ProjectCollection, AttachedFileCollection
 from be.cytomine.client.models import Project, Description, AttachedFile
 from os.path import expanduser
-from java.awt import Frame, TextField, Button, Label, FlowLayout
+from java.awt import Frame, TextField, Button, Label, FlowLayout, GridBagLayout, Choice, Checkbox, GridBagConstraints
 from java.awt.event import TextListener, ActionListener, WindowListener
 
-from biaflowsj.lib import BIAFlows
+from biaflowsj.lib import BIAFlows, Projects, Storages, Uploader
 
 class ProjectDialog(object):
 	'''
@@ -28,9 +28,15 @@ class ProjectDialog(object):
 		self.eventHandler = ProjectDialogEventHandler('BIAFlows', self.getHTML(), False)
 
 	def getTitle(self):
+		'''
+		Answer the title of the window.
+		'''
 		return self.eventHandler.getTitle()
 
 	def dispose(self):
+		'''
+		Close the window and remove it from the ij-window-manager.
+		'''
 		WindowManager.removeWindow(self.eventHandler)
 		self.eventHandler.dispose()
 
@@ -61,7 +67,6 @@ class ProjectDialog(object):
 			try:
 				text = Description().fetch(project).get('data')
 				text = self.downloadThumbnailsAndReplaceLinks(text)
-				print(text)
 				message = '\n' + '<h1>' + name + '</h1>' 
 				message = message + '\n' + text
 				projectData.append({'id': pId, 'name': name, 'message': message})
@@ -106,6 +111,10 @@ class ProjectDialogEventHandler(HTMLDialog):
 		WindowManager.removeWindow(self)
 
 class ConnectionWindow(Frame, TextListener, WindowListener, ActionListener):
+	'''
+	A window that allows to enter a biaflows host and the public and private keys
+	needed to connect to the host.
+	'''
 	@classmethod
 	def getInstance(cls):
 		winList = [x for x in WindowManager.getNonImageWindows() if x.getTitle()=='BIAFlows Connection']
@@ -116,6 +125,9 @@ class ConnectionWindow(Frame, TextListener, WindowListener, ActionListener):
 			return winList[0]
 			
 	def __init__(self): 
+		'''
+		Create and display the connection window.
+		'''
 		super(ConnectionWindow, self).__init__("BIAFlows Connection")
 		self.biaflows = BIAFlows.getInstance()
 		self.createAndShowGUI()
@@ -123,9 +135,17 @@ class ConnectionWindow(Frame, TextListener, WindowListener, ActionListener):
 		WindowManager.addWindow(self)
 
 	def getBiaflows(self):
+		'''
+		Answer the biaflows-instance.
+		'''
 		return self.biaflows
 		
 	def textValueChanged(self, e):
+		'''
+		Event handler for changes in the input.
+
+		Sets the new data in the biaflows instance.
+		'''
 		tc = e.getSource()
 		name = tc.getName();
 		if name=='host':
@@ -136,22 +156,44 @@ class ConnectionWindow(Frame, TextListener, WindowListener, ActionListener):
 			self.biaflows.setPrivateKey(tc.getText())
 
 	def windowClosing(self, e):  
+		'''
+		Only hides the window without disposing of it.
+
+		The connection data remains accessible.
+		'''
 		self.setVisible(False)
 
 	def windowActivated(self, e):  
+		'''
+		Nothing to do.
+		'''
 		pass
 
 	def windowDeactivated(self, e):  
+		'''
+		Nothing to do.
+		'''
 		pass
 
 	def windowClosed(self, e):  
+		'''
+		Nothing to do.
+		'''
 		pass
 
 	def actionPerformed(self, e):
+		'''
+		Event handler for the close button.
+
+		Closes the window. The connection data will not be accessible afterwards.
+		'''
 		self.dispose()
 		WindowManager.removeWindow(self)
 		
 	def createAndShowGUI(self):
+		'''
+		Create and display the gui.
+		'''
 		self.setLayout(FlowLayout())
 
 		serverLabel = Label("BIAFlows host: ");
@@ -184,3 +226,154 @@ class ConnectionWindow(Frame, TextListener, WindowListener, ActionListener):
 				
 		self.setSize(400,250)
 		self.setVisible(True)
+
+class UploadWindow(Frame, TextListener, WindowListener, ActionListener):
+	'''
+	A window to upload images to the biaflows server.
+
+	The images can be uploaded as inut or as ground-truth images. Input images can
+	be converted to the ome-tif format. Ground-truth images are always converted to
+	ome-tif, if they are not alread in ome-tif format.
+	'''
+	def __init__(self): 
+		'''
+		Create and display the upload window.
+		'''
+		super(UploadWindow, self).__init__("BIAFlows Image Upload")
+		self.biaflows = BIAFlows.getInstance()
+		projects = Projects()
+		self.projectNames = projects.getNames()
+		self.projectIDs = projects.getIDs()
+		storages = Storages()
+		self.storageNames = storages.getNames()
+		self.storageIDs = storages.getIDs()
+		self.createAndShowGUI()
+		self.addWindowListener(self)
+		WindowManager.addWindow(self)
+
+	def windowClosing(self, e):   
+		'''
+		Close the image upload window and dispose of it. 
+
+		Also remove it from the ij-window-manager.
+		'''
+		self.dispose()
+		WindowManager.removeWindow(self)
+		
+	def windowActivated(self, e):  
+		'''
+		Nothing to do.
+		'''
+		pass
+
+	def windowDeactivated(self, e):  
+		'''
+		Nothing to do.
+		'''
+		pass
+
+	def windowClosed(self, e):  
+		'''
+		Nothing to do.
+		'''
+		pass
+
+	def createAndShowGUI(self):
+		'''
+		Create and display the gui.
+		'''
+		layout = GridBagLayout()
+		c = GridBagConstraints()
+		self.setLayout(layout)
+		projectLabel = Label("Project: ")
+		c.gridx = 0
+		c.gridy = 0
+		c.ipady = 5
+		c.ipadx = 5
+		c.anchor = GridBagConstraints.EAST
+		layout.setConstraints(projectLabel, c)
+		projectChoice = Choice()
+		for name in self.projectNames:
+			projectChoice.add(name)
+		c.gridx = 1
+		c.gridy = 0
+		c.fill = GridBagConstraints.HORIZONTAL 
+		layout.setConstraints(projectChoice, c)
+		storageLabel = Label("Storage: ")
+		c.gridx = 0
+		c.gridy = 1
+		c.fill = GridBagConstraints.NONE 
+		c.anchor = GridBagConstraints.EAST
+		layout.setConstraints(storageLabel, c)
+		storageChoice = Choice()
+		for name in self.storageNames:
+			storageChoice.add(name)	
+		c.gridx = 1
+		c.gridy = 1
+		c.fill = GridBagConstraints.HORIZONTAL 
+		layout.setConstraints(storageChoice, c)
+		convertToOMETIFCheckBox = Checkbox("convert to OME-TIF", True)
+		c.gridx = 1
+		c.gridy = 2
+		layout.setConstraints(convertToOMETIFCheckBox, c)
+		uploadAsGroundTruthCheckBox = Checkbox("upload as ground-truth images")
+		c.gridx = 1
+		c.gridy = 3
+		layout.setConstraints(uploadAsGroundTruthCheckBox, c)
+		self.folderTextField = TextField("", 15)
+		self.folderTextField.setText("<Image-Folder>")
+		c.gridx = 0
+		c.gridy = 4
+		layout.setConstraints(self.folderTextField, c)
+		self.folderTextField.setEditable(False)
+		browseButton = Button('Browse...')
+		browseButton.addActionListener(self)
+		c.gridx = 1
+		c.gridy = 4
+		layout.setConstraints(browseButton, c)
+		statusLabel = Label("Status:")
+		c.gridy = 5
+		c.gridx = 0
+		c.fill = GridBagConstraints.NONE 
+		c.anchor = GridBagConstraints.EAST
+		layout.setConstraints(statusLabel, c)
+		self.statusTextField = TextField("Select a folder!", 20)
+		c.gridy = 5
+		c.gridx = 1
+		c.fill = GridBagConstraints.HORIZONTAL 
+		layout.setConstraints(self.statusTextField, c)
+		self.statusTextField.setEditable(False)
+		uploadButton = Button("Upload Images")
+		uploadButton.addActionListener(self)
+		c.gridwidth = 2
+		c.gridheight = 2
+		c.gridy = 6
+		c.gridx = 0
+		c.weighty = 1.0
+		layout.setConstraints(uploadButton, c)
+		self.add(projectLabel)
+		self.add(projectChoice)
+		self.add(storageLabel)
+		self.add(storageChoice)
+		self.add(convertToOMETIFCheckBox)
+		self.add(uploadAsGroundTruthCheckBox)
+		self.add(self.folderTextField)
+		self.add(browseButton)
+		self.add(statusLabel)
+		self.add(self.statusTextField)
+		self.add(uploadButton)
+		self.setSize(400,300)
+		self.setVisible(True)		
+
+	def actionPerformed(self, e):
+		'''
+		Event handler for the buttons.
+		'''
+		cmd = e.getActionCommand()
+		if cmd=='Browse...':
+			folder = IJ.getDirectory("Select the image folder")
+			if not folder:
+				return
+			self.folderTextField.setText(folder)
+			images = Uploader.getImageList(folder)
+			self.statusTextField.setText(str(len(images)) + ' images to upload...')

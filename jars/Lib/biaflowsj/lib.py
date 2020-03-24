@@ -1,5 +1,6 @@
 import os
 from java.io import File
+from ij import IJ
 from org.apache.http.entity.mime import MultipartEntity
 from org.apache.http.entity.mime.content import FileBody
 from org.json.simple import JSONValue
@@ -108,37 +109,54 @@ class Uploader(object):
 
 	IMAGE_FILE_EXTENSIONS = ['tif', 'tiff', 'jpg', 'jpeg']
 
-	def convertImagesInFolderToOME(self, folder, outFolder):
+	def convertImagesInFolderToOME(self, folder, outFolder, suffix = ''):
 		'''
 		Convert all images in folder to ome-tif and save the results
 		into outFolder.
 		'''
-		pass
+		print(folder)
+		print(outFolder)
+		images = Uploader.getImageList(folder)
+		for image in images:
+			self.convertImageToOME(folder + image, outFolder, suffix)
 		
-	def convertImageToOME(self, image, outFolder):
+	def convertImageToOME(self, image, outFolder, suffix = ''):
 		'''
 		Convert an image to ome-tif and save it into the outFolder. 
 		'''
+		if not outFolder.endswith(os.sep):
+			outFolder = outFolder + os.sep
+			
 		if not os.path.isdir(outFolder):
 			os.mkdir(outFolder)
 		path, filename = os.path.split(image)	
 		outfilename = filename
-		if not outfilename.tolower().endswith('.ome.tif'):
+		if not outfilename.lower().endswith('.ome.tif'):
 			root, ext = os.path.splitext(outfilename)
-			outfilename = outfilename + ".ome.tif"
-		IJ.openImage(image)
-		imp = IJ.getImage()
+			if root.endswith('_lbl'):
+				suffix = ''
+			outfilename = root + suffix + ".ome.tif"
+		imp = IJ.openImage(image)
 		out = outFolder + outfilename
 		IJ.run(imp, "OME-TIFF...", "save="+out+" compression=Uncompressed");
 		imp.close()
-		
+
 	def uploadImagesInFolder(self, folder, projectID, storageID):
 		'''
 		Upload all images in the folder.
 
-		The images will be associated to a project and a storage.
+		The images will be associated to a project and a storage. Returns the number of
+		successfully uploaded images.
 		'''
-		pass
+		images = Uploader.getImageList(folder)
+		nrOfUploadedImages = 0
+		for image in images:
+			code, _ = self.uploadImage(folder + image, projectID, storageID)
+			if not code==200:
+				print('Error ('+code+') uploading image: ' + folder + image)
+			else:
+				nrOfUploadedImages = nrOfUploadedImages + 1
+		return nrOfUploadedImages
 		
 	def uploadImage(self, aFile, projectID, storageID):
 		'''
@@ -148,7 +166,6 @@ class Uploader(object):
 		'''
 		biaflows = BIAFlows.getInstance()
 		host = biaflows.getUploadURL()
-		print(host)
 		client = HttpClient(biaflows.getPublicKey(), biaflows.getPrivateKey(), host)
 		url = "/upload?idStorage=" + storageID + "&cytomine=" + biaflows.getHost() + "&idProject=" + projectID
 		entity = MultipartEntity()
@@ -192,6 +209,9 @@ class Projects(object):
 		self.updateFromServer()
 
 	def updateFromServer(self):
+		'''
+		Update the local list of project names and ids from the server.
+		'''
 		names = []
 		ids = []
 		projectCollection = ProjectCollection().fetch()

@@ -1,4 +1,4 @@
-import re
+import re, os, shutil
 from javax.swing.event import HyperlinkEvent	
 from ij.gui import HTMLDialog
 from ij import IJ, WindowManager
@@ -227,7 +227,7 @@ class ConnectionWindow(Frame, TextListener, WindowListener, ActionListener):
 		self.setSize(400,250)
 		self.setVisible(True)
 
-class UploadWindow(Frame, TextListener, WindowListener, ActionListener):
+class UploadWindow(Frame, WindowListener, ActionListener):
 	'''
 	A window to upload images to the biaflows server.
 
@@ -240,7 +240,7 @@ class UploadWindow(Frame, TextListener, WindowListener, ActionListener):
 		Create and display the upload window.
 		'''
 		super(UploadWindow, self).__init__("BIAFlows Image Upload")
-		self.biaflows = BIAFlows.getInstance()
+		self.biaflows = ConnectionWindow.getInstance().getBiaflows()
 		projects = Projects()
 		self.projectNames = projects.getNames()
 		self.projectIDs = projects.getIDs()
@@ -292,34 +292,34 @@ class UploadWindow(Frame, TextListener, WindowListener, ActionListener):
 		c.ipadx = 5
 		c.anchor = GridBagConstraints.EAST
 		layout.setConstraints(projectLabel, c)
-		projectChoice = Choice()
+		self.projectChoice = Choice()
 		for name in self.projectNames:
-			projectChoice.add(name)
+			self.projectChoice.add(name)
 		c.gridx = 1
 		c.gridy = 0
 		c.fill = GridBagConstraints.HORIZONTAL 
-		layout.setConstraints(projectChoice, c)
+		layout.setConstraints(self.projectChoice, c)
 		storageLabel = Label("Storage: ")
 		c.gridx = 0
 		c.gridy = 1
 		c.fill = GridBagConstraints.NONE 
 		c.anchor = GridBagConstraints.EAST
 		layout.setConstraints(storageLabel, c)
-		storageChoice = Choice()
+		self.storageChoice = Choice()
 		for name in self.storageNames:
-			storageChoice.add(name)	
+			self.storageChoice.add(name)	
 		c.gridx = 1
 		c.gridy = 1
 		c.fill = GridBagConstraints.HORIZONTAL 
-		layout.setConstraints(storageChoice, c)
-		convertToOMETIFCheckBox = Checkbox("convert to OME-TIF", True)
+		layout.setConstraints(self.storageChoice, c)
+		self.convertToOMETIFCheckBox = Checkbox("convert to OME-TIF", True)
 		c.gridx = 1
 		c.gridy = 2
-		layout.setConstraints(convertToOMETIFCheckBox, c)
-		uploadAsGroundTruthCheckBox = Checkbox("upload as ground-truth images")
+		layout.setConstraints(self.convertToOMETIFCheckBox, c)
+		self.uploadAsGroundTruthCheckBox = Checkbox("upload as ground-truth images")
 		c.gridx = 1
 		c.gridy = 3
-		layout.setConstraints(uploadAsGroundTruthCheckBox, c)
+		layout.setConstraints(self.uploadAsGroundTruthCheckBox, c)
 		self.folderTextField = TextField("", 15)
 		self.folderTextField.setText("<Image-Folder>")
 		c.gridx = 0
@@ -343,25 +343,25 @@ class UploadWindow(Frame, TextListener, WindowListener, ActionListener):
 		c.fill = GridBagConstraints.HORIZONTAL 
 		layout.setConstraints(self.statusTextField, c)
 		self.statusTextField.setEditable(False)
-		uploadButton = Button("Upload Images")
-		uploadButton.addActionListener(self)
+		self.uploadButton = Button("Upload Images")
+		self.uploadButton.addActionListener(self)
 		c.gridwidth = 2
 		c.gridheight = 2
 		c.gridy = 6
 		c.gridx = 0
 		c.weighty = 1.0
-		layout.setConstraints(uploadButton, c)
+		layout.setConstraints(self.uploadButton, c)
 		self.add(projectLabel)
-		self.add(projectChoice)
+		self.add(self.projectChoice)
 		self.add(storageLabel)
-		self.add(storageChoice)
-		self.add(convertToOMETIFCheckBox)
-		self.add(uploadAsGroundTruthCheckBox)
+		self.add(self.storageChoice)
+		self.add(self.convertToOMETIFCheckBox)
+		self.add(self.uploadAsGroundTruthCheckBox)
 		self.add(self.folderTextField)
 		self.add(browseButton)
 		self.add(statusLabel)
 		self.add(self.statusTextField)
-		self.add(uploadButton)
+		self.add(self.uploadButton)
 		self.setSize(400,300)
 		self.setVisible(True)		
 
@@ -376,4 +376,32 @@ class UploadWindow(Frame, TextListener, WindowListener, ActionListener):
 				return
 			self.folderTextField.setText(folder)
 			images = Uploader.getImageList(folder)
-			self.statusTextField.setText(str(len(images)) + ' images to upload...')
+			self.nrOfImagesToUpload = len(images)
+			self.inputFolder = folder
+			self.statusTextField.setText(str(self.nrOfImagesToUpload) + ' images to upload...')
+		if cmd=='Upload Images':
+			if self.nrOfImagesToUpload < 1:
+				return
+			else:
+				# convert if ome checked. Add _lbl if ground-truth checked. upload
+				self.statusTextField.setText('Uploading ' + str(self.nrOfImagesToUpload) + ' images...')
+				imageFolder = self.folderTextField.getText()
+				uploader = Uploader()
+				if self.convertToOMETIFCheckBox.getState() or self.uploadAsGroundTruthCheckBox.getState():
+					self.statusTextField.setText('Converting ' + str(self.nrOfImagesToUpload) + ' images...')
+					# convert and add '_lbl' if ground truth
+					tmpFolder = imageFolder + os.sep + 'biaflows_tmp/'
+					suffix = ''
+					if self.uploadAsGroundTruthCheckBox.getState():
+						suffix = '_lbl'
+					uploader.convertImagesInFolderToOME(imageFolder, tmpFolder, suffix)
+					imageFolder = tmpFolder
+				# upload
+				pid = self.projectIDs[self.projectChoice.getSelectedIndex()]
+				sid = self.storageIDs[self.storageChoice.getSelectedIndex()]
+				self.statusTextField.setText('Uploading ' + str(self.nrOfImagesToUpload) + ' images...')
+				nr = uploader.uploadImagesInFolder(imageFolder, str(pid), str(sid))
+				# cleanup
+				self.statusTextField.setText('Done uploading '+str(nr) + ' images.')
+				if self.convertToOMETIFCheckBox.getState():
+					shutil.rmtree(tmpFolder)

@@ -9,6 +9,7 @@ from be.cytomine.client.models import Project, Description, AttachedFile
 from os.path import expanduser
 from java.awt import Frame, TextField, Button, Label, FlowLayout, GridBagLayout, Choice, Checkbox, GridBagConstraints
 from java.awt.event import TextListener, ActionListener, WindowListener
+from java.lang import Thread
 
 from biaflowsj.lib import BIAFlows, Projects, Storages, Uploader
 
@@ -241,6 +242,7 @@ class UploadWindow(Frame, WindowListener, ActionListener):
 		'''
 		super(UploadWindow, self).__init__("BIAFlows Image Upload")
 		self.biaflows = ConnectionWindow.getInstance().getBiaflows()
+		self.nrOfImagesToUpload = 0
 		projects = Projects()
 		self.projectNames = projects.getNames()
 		self.projectIDs = projects.getIDs()
@@ -365,6 +367,20 @@ class UploadWindow(Frame, WindowListener, ActionListener):
 		self.setSize(400,300)
 		self.setVisible(True)		
 
+	def changed(self, sender, aspect, newValue):
+		if aspect=='image upload':
+			self.statusTextField.setText('Uploading image ' + str(newValue) + '.')
+		if aspect=='image upload finished':
+			self.statusTextField.setText('Upload finished, ' + str(newValue) + ' images uploaded.')
+			self.removeTmpFiles()
+			
+		if aspect=='image upload error':
+			self.statusTextField.setText('Error uploading ' + str(newValue) + '.')
+
+	def removeTmpFiles(self):
+		if self.convertToOMETIFCheckBox.getState():
+			shutil.rmtree(self.tmpFolder)		
+	
 	def actionPerformed(self, e):
 		'''
 		Event handler for the buttons.
@@ -380,28 +396,33 @@ class UploadWindow(Frame, WindowListener, ActionListener):
 			self.inputFolder = folder
 			self.statusTextField.setText(str(self.nrOfImagesToUpload) + ' images to upload...')
 		if cmd=='Upload Images':
+			print('upload')
 			if self.nrOfImagesToUpload < 1:
 				return
 			else:
 				# convert if ome checked. Add _lbl if ground-truth checked. upload
 				self.statusTextField.setText('Uploading ' + str(self.nrOfImagesToUpload) + ' images...')
 				imageFolder = self.folderTextField.getText()
-				uploader = Uploader()
+				uploader = Uploader.getInstance(self.biaflows)
+				uploader.addObserver(self)
+				self.tmpFolder = None
 				if self.convertToOMETIFCheckBox.getState() or self.uploadAsGroundTruthCheckBox.getState():
 					self.statusTextField.setText('Converting ' + str(self.nrOfImagesToUpload) + ' images...')
 					# convert and add '_lbl' if ground truth
-					tmpFolder = imageFolder + os.sep + 'biaflows_tmp/'
+					self.tmpFolder = imageFolder + 'biaflows_tmp/'
 					suffix = ''
 					if self.uploadAsGroundTruthCheckBox.getState():
 						suffix = '_lbl'
-					uploader.convertImagesInFolderToOME(imageFolder, tmpFolder, suffix)
-					imageFolder = tmpFolder
+					uploader.convertImagesInFolderToOME(imageFolder, self.tmpFolder, suffix)
+					imageFolder = self.tmpFolder
 				# upload
 				pid = self.projectIDs[self.projectChoice.getSelectedIndex()]
 				sid = self.storageIDs[self.storageChoice.getSelectedIndex()]
 				self.statusTextField.setText('Uploading ' + str(self.nrOfImagesToUpload) + ' images...')
-				nr = uploader.uploadImagesInFolder(imageFolder, str(pid), str(sid))
+				uploader.setInputFolder(imageFolder)
+				uploader.setProject(str(pid))
+				uploader.setStorage(str(sid))
+				thread = Thread(uploader)
+				thread.start()
 				# cleanup
-				self.statusTextField.setText('Done uploading '+str(nr) + ' images.')
-				if self.convertToOMETIFCheckBox.getState():
-					shutil.rmtree(tmpFolder)
+				self.statusTextField.setText('Upload started.')

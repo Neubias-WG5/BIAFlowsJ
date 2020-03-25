@@ -187,7 +187,12 @@ class UploaderTest(unittest.TestCase):
 		uploader.convertImagesInFolderToOME('./upload_tmp/', './upload_tmp/out/')
 		nrOfUploadedImages = uploader.uploadImagesInFolder('./upload_tmp/out/', str(self.projectID), str(self.storageID))
 		self.assertEquals(nrOfUploadedImages, 2)
-		
+
+	def testGetObservers(self):
+		uploader = Uploader()
+		observers = uploader.getObservers()
+		self.assertEquals(len(observers), 0)
+	
 def suite():
 	suite = unittest.TestSuite()
 	suite.addTest(BIAFlowsTest('testConstructorNoArgs'))
@@ -216,6 +221,7 @@ def suite():
 	suite.addTest(UploaderTest('testConvertImagesInFolderToOME'))
 	suite.addTest(UploaderTest('testUploadImage'))
 	suite.addTest(UploaderTest('testUploadImagesInFolder'))
+	suite.addTest(UploaderTest('testGetObservers'))
 		
 	return suite
 	

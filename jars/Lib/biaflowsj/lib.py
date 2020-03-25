@@ -1,5 +1,6 @@
 import os
 from java.io import File
+from java.lang import Runnable
 from ij import IJ
 from org.apache.http.entity.mime import MultipartEntity
 from org.apache.http.entity.mime.content import FileBody
@@ -101,7 +102,23 @@ class BIAFlows(object):
 			BIAFlows()
 		return cls.__INSTANCE
 
-class Uploader(object):
+class Observable(object):
+
+	def __init__(self):
+		self.observers = []
+		
+	def addObserver(self, anObserver):
+		if not anObserver in self.observers:
+			self.observers.append(anObserver)
+
+	def getObservers(self):
+		return self.observers
+
+	def notifyObservers(self, aspect, newValue):
+		for observer in self.observers:
+			observer.changed(self, aspect, newValue)
+			
+class Uploader(Observable, Runnable):
 	'''
 	Upload data to the biaflows server.
 	'''
@@ -114,8 +131,6 @@ class Uploader(object):
 		Convert all images in folder to ome-tif and save the results
 		into outFolder.
 		'''
-		print(folder)
-		print(outFolder)
 		images = Uploader.getImageList(folder)
 		for image in images:
 			self.convertImageToOME(folder + image, outFolder, suffix)
@@ -151,11 +166,14 @@ class Uploader(object):
 		images = Uploader.getImageList(folder)
 		nrOfUploadedImages = 0
 		for image in images:
+			self.notifyObservers("image upload", nrOfUploadedImages+1)
 			code, _ = self.uploadImage(folder + image, projectID, storageID)
 			if not code==200:
-				print('Error ('+code+') uploading image: ' + folder + image)
+				print('Error ('+str(code)+') uploading image: ' + folder + image)
+				self.notifyObservers("image upload error", folder + image)
 			else:
 				nrOfUploadedImages = nrOfUploadedImages + 1
+		self.notifyObservers("image upload finished", nrOfUploadedImages)
 		return nrOfUploadedImages
 		
 	def uploadImage(self, aFile, projectID, storageID):
@@ -164,10 +182,9 @@ class Uploader(object):
 
 		The image will be associated to a project and a storage.
 		'''
-		biaflows = BIAFlows.getInstance()
-		host = biaflows.getUploadURL()
-		client = HttpClient(biaflows.getPublicKey(), biaflows.getPrivateKey(), host)
-		url = "/upload?idStorage=" + storageID + "&cytomine=" + biaflows.getHost() + "&idProject=" + projectID
+		host = self.biaflows.getUploadURL()
+		client = HttpClient(self.biaflows.getPublicKey(), self.biaflows.getPrivateKey(), host)
+		url = "/upload?idStorage=" + storageID + "&cytomine=" + self.biaflows.getHost() + "&idProject=" + projectID
 		entity = MultipartEntity()
 		entity.addPart("files[]", FileBody(File(aFile)))
 		client.authorize("POST", url, entity.getContentType().getValue(), "application/json,*/*")
@@ -188,16 +205,34 @@ class Uploader(object):
 		return images
 		
 	@classmethod
-	def getInstance(cls):
+	def getInstance(cls, biaflows = None):
 		'''
 		Get the current instance of the uploader. 
 
 		Creates and returns a new instance if none exists.
 		'''
+		if not biaflows:
+			biaflows = BIAFlows.getInstance()
 		if not cls.__INSTANCE:
 			cls.__INSTANCE = Uploader()
+		cls.__INSTANCE.setBiaflows(biaflows)
 		return cls.__INSTANCE
 
+	def run(self):
+		self.uploadImagesInFolder(self.folder, self.projectID, self.storageID)
+
+	def setInputFolder(self, folder):
+		self.folder = folder
+
+	def setProject(self, anID):
+		self.projectID = anID
+
+	def setBiaflows(self, biaflows):
+		self.biaflows = biaflows
+
+	def setStorage(self, anID):
+		self.storageID = anID
+	
 class Projects(object):
 	def __init__(self):
 		'''
